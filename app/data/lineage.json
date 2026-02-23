@@ -1,0 +1,107 @@
+{
+  "root": "intelliegencedatacatalog.pharma_sales.fact_pharma_sales",
+  "direction": "upstream",
+  "nodes": [
+    {
+      "id": "intelliegencedatacatalog.pharma_sales.fact_pharma_sales",
+      "downstream_count": 0,
+      "downstream_tables": []
+    },
+    {
+      "id": "intelliegencedatacatalog.pharma_sales.raw_pharma_sales",
+      "downstream_count": 6,
+      "downstream_tables": [
+        "intelliegencedatacatalog.pharma_sales.dim_drug",
+        "intelliegencedatacatalog.pharma_sales.dim_manufacturer",
+        "intelliegencedatacatalog.pharma_sales.dim_customer",
+        "intelliegencedatacatalog.pharma_sales.dim_pharmacy",
+        "intelliegencedatacatalog.pharma_sales.fact_pharma_sales",
+        "intelliegencedatacatalog.pharma_sales.silver_sales"
+      ]
+    },
+    {
+      "id": "intelliegencedatacatalog.sample.raw_pharma_sales",
+      "downstream_count": 1,
+      "downstream_tables": [
+        "intelliegencedatacatalog.pharma_sales.raw_pharma_sales"
+      ]
+    },
+    {
+      "id": "intelliegencedatacatalog.pharma_sales.silver_sales",
+      "downstream_count": 5,
+      "downstream_tables": [
+        "intelliegencedatacatalog.pharma_sales.dim_pharmacy",
+        "intelliegencedatacatalog.pharma_sales.dim_customer",
+        "intelliegencedatacatalog.pharma_sales.fact_pharma_sales",
+        "intelliegencedatacatalog.pharma_sales.dim_manufacturer",
+        "intelliegencedatacatalog.pharma_sales.dim_drug"
+      ]
+    },
+    {
+      "id": "intelliegencedatacatalog.pharma_sales.dim_drug",
+      "downstream_count": 1,
+      "downstream_tables": [
+        "intelliegencedatacatalog.pharma_sales.fact_pharma_sales"
+      ]
+    },
+    {
+      "id": "intelliegencedatacatalog.pharma_sales.dim_manufacturer",
+      "downstream_count": 1,
+      "downstream_tables": [
+        "intelliegencedatacatalog.pharma_sales.dim_drug"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.dim_drug",
+      "target": "intelliegencedatacatalog.pharma_sales.fact_pharma_sales",
+      "is_join": true
+    },
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.silver_sales",
+      "target": "intelliegencedatacatalog.pharma_sales.fact_pharma_sales",
+      "is_join": true
+    },
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.raw_pharma_sales",
+      "target": "intelliegencedatacatalog.pharma_sales.fact_pharma_sales",
+      "is_join": true
+    },
+    {
+      "source": "intelliegencedatacatalog.sample.raw_pharma_sales",
+      "target": "intelliegencedatacatalog.pharma_sales.raw_pharma_sales",
+      "is_join": false
+    },
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.raw_pharma_sales",
+      "target": "intelliegencedatacatalog.pharma_sales.silver_sales",
+      "is_join": false
+    },
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.raw_pharma_sales",
+      "target": "intelliegencedatacatalog.pharma_sales.dim_drug",
+      "is_join": true
+    },
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.silver_sales",
+      "target": "intelliegencedatacatalog.pharma_sales.dim_drug",
+      "is_join": true
+    },
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.dim_manufacturer",
+      "target": "intelliegencedatacatalog.pharma_sales.dim_drug",
+      "is_join": true
+    },
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.raw_pharma_sales",
+      "target": "intelliegencedatacatalog.pharma_sales.dim_manufacturer",
+      "is_join": true
+    },
+    {
+      "source": "intelliegencedatacatalog.pharma_sales.silver_sales",
+      "target": "intelliegencedatacatalog.pharma_sales.dim_manufacturer",
+      "is_join": true
+    }
+  ]
+}

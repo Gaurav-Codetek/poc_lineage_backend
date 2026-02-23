@@ -1,0 +1,11 @@
+[project]
+name = "lineage-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "apscheduler>=3.11.2",
+    "networkx>=3.6.1",
+    "pytz>=2025.2",
+]
