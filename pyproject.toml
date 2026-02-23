@@ -13,4 +13,5 @@ dependencies = [
     "pydantic>=2.10.4",
     "apscheduler>=3.10.4",
     "pytz>=2024.1",
+    "networkx==3.6.1"
 ]
