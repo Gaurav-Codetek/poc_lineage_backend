@@ -1,11 +1,9 @@
-from collections import defaultdict
 from app.db.neo4j import driver
 
 UPSTREAM_GRAPH = {}
 DOWNSTREAM_GRAPH = {}
 UPSTREAM_COUNT = {}
 
-from app.db.neo4j import driver
 from app.cache.table_cache import save_cache
 from app.cache.table_cache import load_cache
 

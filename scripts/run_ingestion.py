@@ -1,20 +1,18 @@
-from connectors.neo4j_connector import Neo4jConnector
-from connectors.databricks_connector import DatabricksConnector
-from extractors.metadata_extractor import MetadataExtractor
-from ingestion.graph_ingestion import (
+from app.connectors.databricks_connector import DatabricksConnector
+from app.connectors.neo4j_connector import Neo4jConnector
+from app.core.config import CATALOG, DATABRICKS_CONFIG, NEO4J_CONFIG
+from app.extractors.metadata_extractor import MetadataExtractor
+from app.ingestion.graph_ingestion import (
     create_constraints,
-    ingest_tables,
     ingest_columns,
-    ingest_table_lineage
+    ingest_table_lineage,
+    ingest_tables,
 )
-from config import CATALOG, DATABRICKS_CONFIG, NEO4J_CONFIG
 
 
 def run():
-
     db = DatabricksConnector(**DATABRICKS_CONFIG)
     neo4j = Neo4jConnector(**NEO4J_CONFIG)
-
     extractor = MetadataExtractor(db)
 
     print("Extracting metadata...")
@@ -34,7 +32,6 @@ def run():
     ingest_table_lineage(neo4j, lineage)
 
     print("Done")
-    
 
 
 if __name__ == "__main__":

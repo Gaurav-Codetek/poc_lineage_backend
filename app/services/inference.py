@@ -1,8 +1,6 @@
 from rapidfuzz import fuzz
 import networkx as nx
 import pandas as pd
-
-import pandas as pd
 import numpy as np
 
 class EnhancedTableClassifier:
@@ -115,19 +113,6 @@ class KeyInferenceEngine:
         ]
 
 
-def filter_profile_by_family(profile_df, family):
-
-    profile_df["full_name"] = (
-        profile_df["catalog_name"] + "." +
-        profile_df["schema_name"] + "." +
-        profile_df["table_name"]
-    )
-
-    return profile_df[
-        profile_df["full_name"].isin(family)
-    ]
-
-
 def containment_test(connector, fact_table, fact_col, dim_table, dim_col):
 
     # sample based fast check
@@ -212,77 +197,9 @@ def detect_fk_for_target(
 
     return relationships
 
-def build_table_type_map(table_types_df):
-    table_types_df["full_name"] = (
-        table_types_df["catalog_name"] + "." +
-        table_types_df["schema_name"] + "." +
-        table_types_df["table_name"]
-    )
-    return dict(zip(table_types_df["full_name"], table_types_df["type"]))
 
 def lineage_distance(graph, source, target):
     try:
         return nx.shortest_path_length(graph.graph, source, target)
-    except:
+    except Exception:
         return 5  # large distance
-    
-def classify_relationships(
-        relationships,
-        table_type_map,
-        lineage_graph):
-
-    classified = []
-
-    for rel in relationships:
-
-        dim_table = rel["dimension_table"]
-        target = rel["target_table"]
-
-        # default classification
-        relationship_type = "technical"
-        confidence = 0.5
-
-        # semantic if dimension
-        if table_type_map.get(dim_table) == "DIM":
-            relationship_type = "semantic"
-            confidence += 0.2
-
-        # naming similarity
-        score = fuzz.partial_ratio(
-            rel["fk_column"],
-            rel["pk_column"]
-        ) / 100
-
-        confidence += 0.2 * score
-
-        # lineage closeness
-        dist = lineage_distance(lineage_graph, dim_table, target)
-
-        if dist <= 2:
-            confidence += 0.1
-
-        confidence = min(confidence, 0.99)
-
-        rel["relationship_type"] = relationship_type
-        rel["confidence"] = round(confidence, 2)
-
-        classified.append(rel)
-
-    return classified
-
-def rank_and_filter(classified):
-
-    import pandas as pd
-
-    df = pd.DataFrame(classified)
-
-    # highest confidence first
-    df = df.sort_values("confidence", ascending=False)
-
-    # keep best match per FK column
-    df = df.drop_duplicates(
-        subset=["target_table", "fk_column", "relationship_type"],
-        keep="first"
-    )
-
-    return df.to_dict("records")

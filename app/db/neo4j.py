@@ -1,5 +1,5 @@
 from neo4j import GraphDatabase
-from app.utils.config import NEO4J_URI, NEO4J_USER, NEO4J_PASS
+from app.core.config import NEO4J_URI, NEO4J_USER, NEO4J_PASS
 
 driver = GraphDatabase.driver(
     NEO4J_URI,

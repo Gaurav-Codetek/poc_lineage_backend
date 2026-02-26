@@ -1,5 +1,5 @@
 from databricks import sql
-from app.utils.config import (
+from app.core.config import (
     DATABRICKS_HOST,
     DATABRICKS_HTTP_PATH,
     DATABRICKS_TOKEN

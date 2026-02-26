@@ -1,5 +1,5 @@
 import redis
-from app.utils.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_SSL
+from app.core.config import REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_SSL
 
 if REDIS_SSL:
     redis_client = redis.Redis(

@@ -1,4 +1,4 @@
-from app.utils.config import DATABRICKS_HOST, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN
+from app.core.config import DATABRICKS_HOST, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN
 from databricks import sql
 from app.db.neo4j import driver
 
