@@ -28,3 +28,10 @@ def get_dimensions(
     for dim in dimension:
         result.append(dim["dimension"])
     return result
+
+@router.get("/dimensions/detail/{tableName}")
+def get_dimensions(
+    tableName: str = Path(..., description="Target table")
+):
+    dimension = dag_builder.get_dimensions(tableName)
+    return dimension
