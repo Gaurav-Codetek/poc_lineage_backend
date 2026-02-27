@@ -128,3 +128,46 @@ class DAGBuilder:
         """
     
         return self.neo4j.execute_read(query, {"table": table})
+
+    def get_tables(self):
+        query = """
+        MATCH (t:Table)
+        WITH coalesce(t.full_name, t.name) AS table_name
+        WHERE table_name IS NOT NULL
+          AND size(split(table_name, '.')) = 3
+        RETURN DISTINCT table_name AS table
+        ORDER BY table
+        """
+
+        results = self.neo4j.execute_read(query)
+        return [row["table"] for row in results]
+
+    def search_tables(self, query_text, limit=20):
+        if not query_text:
+            return []
+
+        query_text = query_text.strip()
+        if not query_text:
+            return []
+
+        query = """
+        MATCH (t:Table)
+        WITH DISTINCT coalesce(t.full_name, t.name) AS table_name
+        WHERE table_name IS NOT NULL
+          AND size(split(table_name, '.')) = 3
+          AND toLower(table_name) CONTAINS toLower($query_text)
+        RETURN table_name AS table
+        ORDER BY
+          CASE
+            WHEN toLower(table_name) STARTS WITH toLower($query_text) THEN 0
+            ELSE 1
+          END,
+          table_name
+        LIMIT $limit
+        """
+
+        results = self.neo4j.execute_read(
+            query,
+            {"query_text": query_text, "limit": int(limit)},
+        )
+        return [row["table"] for row in results]
