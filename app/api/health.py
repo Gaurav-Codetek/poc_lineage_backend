@@ -135,14 +135,9 @@ def get_table_health(
     },
     tags=["health"],
 )
-def get_complete_column_health(
-    is_current: bool | None = Query(
-        default=None,
-        description="Optional filter by current snapshot state.",
-    )
-) -> ColumnHealthListResponse:
+def get_complete_column_health() -> ColumnHealthListResponse:
     try:
-        rows = load_complete_column_health(is_current=is_current)
+        rows = load_complete_column_health()
     except DatabricksQueryError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -167,13 +162,9 @@ def get_column_health(
     catalog: str,
     schema: str,
     table: str,
-    is_current: bool | None = Query(
-        default=None,
-        description="Optional filter by current snapshot state.",
-    ),
 ) -> ColumnHealthListResponse:
     try:
-        rows = load_column_health(catalog, schema, table, is_current=is_current)
+        rows = load_column_health(catalog, schema, table)
     except DatabricksQueryError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
