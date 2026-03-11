@@ -1,5 +1,5 @@
 import threading
-from app.services.table_service import preload_graph, load_cache_into_memory
+from app.services.table_service import USE_REDIS_CACHE, preload_graph, load_cache_into_memory
 from app.services.ingestion_service import ingest_lineage_from_databricks
 
 # Lock to prevent duplicate refresh
@@ -28,6 +28,10 @@ def background_ingestion():
 # Neo4j → Redis → Memory
 # -----------------------------
 def sync_cache_refresh():
+    if not USE_REDIS_CACHE:
+        print("Redis cache refresh skipped. Using direct Neo4j traversal.")
+        return
+
     print("Refreshing Redis and memory cache...")
     preload_graph()
     load_cache_into_memory()

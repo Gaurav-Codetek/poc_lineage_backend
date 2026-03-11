@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import column_lineage, health, lineage_retriever, stats, table_lineage
 from app.api import refresh
-from app.services.table_service import load_cache_into_memory, preload_graph
+from app.services.table_service import USE_REDIS_CACHE, load_cache_into_memory, preload_graph
 
 
 app = FastAPI(title="Enterprise Lineage Backend")
@@ -24,7 +24,10 @@ app.include_router(health.router, prefix="/health")
 
 @app.on_event("startup")
 def startup():
-    print("Initializing Redis lineage cache...")
-    preload_graph()
-    load_cache_into_memory()
+    if USE_REDIS_CACHE:
+        print("Initializing Redis lineage cache...")
+        preload_graph()
+        load_cache_into_memory()
+    else:
+        print("Redis cache warmup skipped. Using direct Neo4j traversal.")
 
