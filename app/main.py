@@ -1,11 +1,33 @@
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 from app.api import column_lineage, dq, health, lineage_retriever, stats, table_lineage
 from app.api import refresh
 from app.services.table_service import USE_REDIS_CACHE, load_cache_into_memory, preload_graph
 
+FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend_static"
+ASSETS_DIR = FRONTEND_DIR / "assets"
 
-app = FastAPI(title="Enterprise Lineage Backend")
+API_ROUTERS = [
+    (table_lineage.router, "/lineage/table"),
+    (column_lineage.router, "/lineage/column"),
+    (refresh.router, "/refresh"),
+    (lineage_retriever.router, "/retriever"),
+    (stats.router, "/stats"),
+    (health.router, "/health"),
+    (dq.router, "/dq"),
+]
+
+app = FastAPI(
+    title="Enterprise Lineage Backend",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,13 +37,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(table_lineage.router, prefix="/lineage/table")
-app.include_router(column_lineage.router, prefix="/lineage/column")
-app.include_router(refresh.router, prefix="/refresh")
-app.include_router(lineage_retriever.router, prefix="/retriever")
-app.include_router(stats.router, prefix="/stats")
-app.include_router(health.router, prefix="/health")
-app.include_router(dq.router, prefix="/dq")
+for router, prefix in API_ROUTERS:
+    app.include_router(router, prefix=f"/api{prefix}")
+
+for router, prefix in API_ROUTERS:
+    app.include_router(router, prefix=prefix, include_in_schema=False)
+
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="frontend-assets")
+
+
+def _frontend_file_response(path: Path) -> FileResponse:
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail=f"Frontend file not found: {path.name}")
+    return FileResponse(path)
+
+
+@app.get("/", include_in_schema=False)
+def serve_frontend_index() -> FileResponse:
+    return _frontend_file_response(FRONTEND_DIR / "index.html")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend(full_path: str) -> FileResponse:
+    if full_path.startswith("api/") or full_path == "api":
+        raise HTTPException(status_code=404, detail="API route not found")
+
+    requested_path = FRONTEND_DIR / full_path
+    if requested_path.exists() and requested_path.is_file():
+        return FileResponse(requested_path)
+
+    return _frontend_file_response(FRONTEND_DIR / "index.html")
 
 @app.on_event("startup")
 def startup():

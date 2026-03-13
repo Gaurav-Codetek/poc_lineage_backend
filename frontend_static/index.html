@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Data Lineage Explorer — Visualize Table & Column Lineage</title>
+    <meta name="description" content="Interactive data lineage visualization tool. Explore upstream and downstream table dependencies, column-level lineage, and fact-dimension relationships in your data warehouse." />
+    <meta name="author" content="Lineage Explorer" />
+
+    <meta property="og:title" content="Data Lineage Explorer — Visualize Table & Column Lineage" />
+    <meta property="og:description" content="Interactive data lineage visualization tool. Explore upstream and downstream table dependencies, column-level lineage, and fact-dimension relationships." />
+    <meta property="og:type" content="website" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (() => {
+        const legacyOrigin = "https://poc-lineage-backend.vercel.app";
+        const apiPrefixes = ["/lineage/", "/refresh/", "/retriever/", "/stats/", "/health/", "/dq/"];
+        const originalFetch = window.fetch.bind(window);
+
+        const rewriteUrl = (value) => {
+          const source = typeof value === "string" ? value : value.url;
+
+          try {
+            const url = new URL(source, window.location.origin);
+            const shouldRewriteOrigin = url.origin === legacyOrigin || url.origin === window.location.origin;
+            const shouldRewritePath = apiPrefixes.some((prefix) => url.pathname.startsWith(prefix));
+
+            if (shouldRewriteOrigin && shouldRewritePath) {
+              url.protocol = window.location.protocol;
+              url.host = window.location.host;
+              url.pathname = `/api${url.pathname}`;
+              return url.toString();
+            }
+          } catch (error) {
+            console.error("Failed to rewrite frontend API request", error);
+          }
+
+          return source;
+        };
+
+        window.fetch = (input, init) => {
+          const rewritten = rewriteUrl(input);
+
+          if (input instanceof Request) {
+            return originalFetch(new Request(rewritten, input), init);
+          }
+
+          return originalFetch(rewritten, init);
+        };
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-ChK7TLLB.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Bzzf_Nay.css">
+  </head>
+
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
