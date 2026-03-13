@@ -535,6 +535,32 @@ def make_count_sql(metadata: Dict[str, Any], rule: str, column: str, dtype: str)
     return None
 
 
+def _sql_string_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _build_check_definitions(
+    metadata: Dict[str, Any],
+    selections: List[Tuple[str, str]],
+    dtype_map: Dict[str, str],
+) -> List[Dict[str, str]]:
+    checks: List[Dict[str, str]] = []
+    for rule, column in selections:
+        count_sql = make_count_sql(metadata, rule, column, dtype_map.get(column, ""))
+        if not count_sql:
+            continue
+
+        checks.append(
+            {
+                "rule": rule,
+                "column": column,
+                "sql": count_sql,
+            }
+        )
+
+    return checks
+
+
 def run_count_query(count_sql: str) -> Tuple[int | None, str | None]:
     try:
         with get_db_connection() as conn:
@@ -546,6 +572,82 @@ def run_count_query(count_sql: str) -> Tuple[int | None, str | None]:
                 return int(row[0]) if row[0] is not None else 0, None
     except Exception as exc:
         return None, f"Execution error: {exc}"
+
+
+def _run_count_queries_batch(
+    checks: List[Dict[str, str]],
+) -> Tuple[Dict[Tuple[str, str], int] | None, str | None]:
+    if not checks:
+        return {}, None
+
+    batch_query = "\nUNION ALL\n".join(
+        (
+            f"SELECT {_sql_string_literal(check['rule'])} AS rule, "
+            f"{_sql_string_literal(check['column'])} AS column_name, "
+            f"({check['sql']}) AS violations"
+        )
+        for check in checks
+    )
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(batch_query)
+                rows = cursor.fetchall()
+    except Exception as exc:
+        return None, f"Execution error: {exc}"
+
+    results: Dict[Tuple[str, str], int] = {}
+    for row in rows:
+        if hasattr(row, "asDict"):
+            data = row.asDict()
+            rule = str(data.get("rule", ""))
+            column = str(data.get("column_name", ""))
+            violations = int(data.get("violations") or 0)
+        else:
+            rule = str(row[0])
+            column = str(row[1])
+            violations = int(row[2] or 0)
+
+        results[(rule, column)] = violations
+
+    return results, None
+
+
+def _run_count_queries_sequential(
+    checks: List[Dict[str, str]],
+) -> Tuple[Dict[Tuple[str, str], int], List[Dict[str, str]]]:
+    results: Dict[Tuple[str, str], int] = {}
+    errors: List[Dict[str, str]] = []
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                for check in checks:
+                    try:
+                        cursor.execute(check["sql"])
+                        row = cursor.fetchone()
+                        violations = int(row[0]) if row and row[0] is not None else 0
+                        results[(check["rule"], check["column"])] = violations
+                    except Exception as exc:
+                        errors.append(
+                            {
+                                "column": check["column"],
+                                "rule": check["rule"],
+                                "error": f"Execution error: {exc}",
+                            }
+                        )
+    except Exception as exc:
+        return {}, [
+            {
+                "column": check["column"],
+                "rule": check["rule"],
+                "error": f"Execution error: {exc}",
+            }
+            for check in checks
+        ]
+
+    return results, errors
 
 
 def parse_selections_from_payload(payload: Dict[str, Any]) -> List[Tuple[str, str]]:
@@ -621,22 +723,24 @@ def build_run_response(catalog: str, schema: str, table: str, payload: Dict[str,
     columns = metadata["table"]["columns"]
     dtype_map: Dict[str, str] = {column["column_name"]: column.get("data_type", "") for column in columns}
     failures_by_col: Dict[str, List[Dict[str, Any]]] = {}
-    errors_list: List[Dict[str, Any]] = []
+    checks = _build_check_definitions(metadata, selections, dtype_map)
+    results_map, _ = _run_count_queries_batch(checks)
 
-    for rule, column in selections:
-        dtype = dtype_map.get(column, "")
-        count_sql = make_count_sql(metadata, rule, column, dtype)
+    if results_map is None:
+        results_map, errors_list = _run_count_queries_sequential(checks)
+    else:
+        errors_list = []
 
-        if not count_sql:
-            continue
-
-        violations, error = run_count_query(count_sql)
-        if error is not None or violations is None:
+    for check in checks:
+        rule = check["rule"]
+        column = check["column"]
+        violations = results_map.get((rule, column))
+        if violations is None:
             errors_list.append(
                 {
                     "column": column,
                     "rule": rule,
-                    "error": error or "Unknown error",
+                    "error": "No result returned for the selected check.",
                 }
             )
             continue
@@ -647,15 +751,11 @@ def build_run_response(catalog: str, schema: str, table: str, payload: Dict[str,
                     "rule": rule,
                     "title": RULE_TITLES.get(rule, rule),
                     "violations": int(violations),
-                    "sql": count_sql,
+                    "sql": check["sql"],
                 }
             )
 
-    evaluated = sum(
-        1
-        for rule, column in selections
-        if make_count_sql(metadata, rule, column, dtype_map.get(column, "")) is not None
-    )
+    evaluated = len(checks)
     all_passed = evaluated > 0 and not failures_by_col and not errors_list
 
     response = {

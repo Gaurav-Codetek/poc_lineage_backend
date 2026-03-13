@@ -8,6 +8,7 @@ router = APIRouter()
 
 
 @router.get("/{catalog}.{schema}.{table}")
+@router.get("/{catalog}.{schema}.{table}/", include_in_schema=False)
 def get_dq_suggestions(catalog: str, schema: str, table: str) -> dict[str, Any]:
     try:
         return build_suggestion_response(catalog, schema, table)
@@ -20,6 +21,7 @@ def get_dq_suggestions(catalog: str, schema: str, table: str) -> dict[str, Any]:
 
 
 @router.post("/run/{catalog}.{schema}.{table}")
+@router.post("/run/{catalog}.{schema}.{table}/", include_in_schema=False)
 async def run_dq_checks(
     catalog: str,
     schema: str,
