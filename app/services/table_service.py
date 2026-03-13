@@ -1,4 +1,5 @@
 import os
+import threading
 
 from app.db.neo4j import driver
 
@@ -8,7 +9,8 @@ UPSTREAM_GRAPH = {}
 DOWNSTREAM_GRAPH = {}
 UPSTREAM_COUNT = {}
 
-USE_REDIS_CACHE = os.getenv("USE_REDIS_CACHE", "false").lower() == "true"
+USE_REDIS_CACHE = os.getenv("USE_REDIS_CACHE", "true").lower() == "true"
+_CACHE_WARMUP_LOCK = threading.Lock()
 
 
 def preload_graph():
@@ -37,9 +39,12 @@ def preload_graph():
             for upstream_table in upstream:
                 downstream_graph.setdefault(upstream_table, []).append(target)
 
-    save_cache(upstream_graph, downstream_graph, upstream_count)
+    cache_saved = save_cache(upstream_graph, downstream_graph, upstream_count)
 
-    print("Redis cache updated successfully.")
+    if cache_saved:
+        print("Redis cache updated successfully.")
+    else:
+        print("Redis cache unavailable. Skipped Redis update.")
 
 
 def _get_upstream_tables(session, table: str, upstream_cache: dict[str, list[str]]) -> list[str]:
@@ -191,8 +196,15 @@ def _traverse_graph_from_neo4j(root_table: str, direction: str) -> dict:
 
 
 def traverse_graph(root_table: str, direction="upstream"):
-    if USE_REDIS_CACHE and UPSTREAM_GRAPH:
-        return _traverse_graph_from_memory(root_table, direction)
+    if USE_REDIS_CACHE:
+        if UPSTREAM_GRAPH:
+            return _traverse_graph_from_memory(root_table, direction)
+
+        if load_cache_into_memory():
+            return _traverse_graph_from_memory(root_table, direction)
+
+        schedule_cache_warmup()
+
     return _traverse_graph_from_neo4j(root_table, direction)
 
 
@@ -206,5 +218,39 @@ def load_cache_into_memory():
         UPSTREAM_GRAPH = cache["upstream"]
         DOWNSTREAM_GRAPH = cache["downstream"]
         UPSTREAM_COUNT = cache["counts"]
+        print("Memory cache loaded.")
+        return True
 
-    print("Memory cache loaded.")
+    return False
+
+
+def _run_cache_warmup(force_refresh: bool = False):
+    with _CACHE_WARMUP_LOCK:
+        try:
+            cache_loaded = False if force_refresh else load_cache_into_memory()
+            if cache_loaded:
+                print("Redis cache loaded into memory.")
+                return
+
+            preload_graph()
+            if load_cache_into_memory():
+                print("Redis cache warmup completed.")
+            else:
+                print("Redis cache warmup finished, but no cache was available to load into memory.")
+        except Exception as exc:
+            print(f"Redis cache warmup failed: {exc}")
+
+
+def schedule_cache_warmup(force_refresh: bool = False) -> bool:
+    if not USE_REDIS_CACHE:
+        return False
+
+    if _CACHE_WARMUP_LOCK.locked():
+        return False
+
+    threading.Thread(
+        target=_run_cache_warmup,
+        kwargs={"force_refresh": force_refresh},
+        daemon=True,
+    ).start()
+    return True

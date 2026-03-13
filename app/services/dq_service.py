@@ -1,10 +1,13 @@
+import hashlib
 import json
 import os
 import re
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.cache.dq_cache import load_dq_cache, save_dq_cache
 from app.db.databricks import get_db_connection
 
 try:
@@ -36,6 +39,9 @@ RULE_TITLES = {
     "no_future_dates": "No Future Dates",
     "freshness_validation": "Freshness Check",
 }
+
+_DQ_SUGGESTION_REFRESH_LOCK = threading.Lock()
+_DQ_SUGGESTION_REFRESH_IN_PROGRESS: set[str] = set()
 
 _LLM_RULES_DEF = """
 Allowed DQ rules (use only these exact keys):
@@ -282,7 +288,7 @@ def _sanitize_llm_mapping(
     return output
 
 
-def build_suggestions(metadata: Dict[str, Any]) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
+def _build_llm_suggestions(metadata: Dict[str, Any]) -> Tuple[Dict[str, List[str]], Dict[str, str]] | None:
     table_meta = {
         "catalog": metadata["catalog"],
         "schema": metadata["schema"],
@@ -302,23 +308,25 @@ def build_suggestions(metadata: Dict[str, Any]) -> Tuple[Dict[str, List[str]], D
     valid_cols = [column["column_name"] for column in metadata["table"]["columns"]]
     llm = _get_llm_client()
 
-    if llm is not None:
-        json_contract = {
-            "type": "object",
-            "required": ["rule_to_columns"],
-            "properties": {
-                "rule_to_columns": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
-                }
-            },
-            "additionalProperties": False,
-        }
+    if llm is None:
+        return None
 
-        prompt = f"""
+    json_contract = {
+        "type": "object",
+        "required": ["rule_to_columns"],
+        "properties": {
+            "rule_to_columns": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            }
+        },
+        "additionalProperties": False,
+    }
+
+    prompt = f"""
 You are a precise data-quality rule suggester.
 Only use the provided columns and descriptions.
 Never invent column names or rules.
@@ -339,26 +347,85 @@ INPUT METADATA:
 {json.dumps(table_meta, indent=2)}
 """
 
-        try:
-            response = llm.responses.create(
-                model=os.getenv("DQ_LLM_MODEL", "gpt-5-mini"),
-                input=prompt,
-            )
-            raw_json = _safe_json_from_text(response.output_text)
-            suggestions = _sanitize_llm_mapping(raw_json or {}, valid_rules, valid_cols)
-        except Exception:
-            suggestions = {}
-    else:
+    try:
+        response = llm.responses.create(
+            model=os.getenv("DQ_LLM_MODEL", "gpt-5-mini"),
+            input=prompt,
+        )
+        raw_json = _safe_json_from_text(response.output_text)
+        suggestions = _sanitize_llm_mapping(raw_json or {}, valid_rules, valid_cols)
+    except Exception:
         suggestions = {}
 
     if not suggestions:
-        return _build_suggestions_static(metadata["table"]["columns"])
+        return None
 
     dtype_map = {
         column["column_name"]: column.get("data_type", "")
         for column in metadata["table"]["columns"]
     }
     return suggestions, dtype_map
+
+
+def _suggestion_cache_key(metadata: Dict[str, Any]) -> str:
+    signature = json.dumps(
+        {
+            "catalog": metadata["catalog"],
+            "schema": metadata["schema"],
+            "table": metadata["table"],
+        },
+        sort_keys=True,
+    )
+    signature_hash = hashlib.md5(signature.encode("utf-8")).hexdigest()
+    return f"{full_table_target_str(metadata)}:{signature_hash}"
+
+
+def _schedule_llm_suggestion_refresh(cache_key: str, metadata: Dict[str, Any]) -> bool:
+    if _get_llm_client() is None:
+        return False
+
+    with _DQ_SUGGESTION_REFRESH_LOCK:
+        if cache_key in _DQ_SUGGESTION_REFRESH_IN_PROGRESS:
+            return False
+        _DQ_SUGGESTION_REFRESH_IN_PROGRESS.add(cache_key)
+
+    def _worker():
+        try:
+            llm_output = _build_llm_suggestions(metadata)
+            if llm_output is None:
+                return
+
+            suggestions, dtype_map = llm_output
+            save_dq_cache(
+                cache_key,
+                {
+                    "suggested_columns_by_rule": suggestions,
+                    "dtypes_by_column": dtype_map,
+                    "suggestion_source": "cached_ai",
+                },
+            )
+        finally:
+            with _DQ_SUGGESTION_REFRESH_LOCK:
+                _DQ_SUGGESTION_REFRESH_IN_PROGRESS.discard(cache_key)
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return True
+
+
+def build_suggestions(metadata: Dict[str, Any]) -> Tuple[Dict[str, List[str]], Dict[str, str], str]:
+    cache_key = _suggestion_cache_key(metadata)
+    cached_payload = load_dq_cache(cache_key)
+    if cached_payload is not None:
+        return (
+            cached_payload.get("suggested_columns_by_rule", {}),
+            cached_payload.get("dtypes_by_column", {}),
+            cached_payload.get("suggestion_source", "cached_ai"),
+        )
+
+    static_suggestions, dtype_map = _build_suggestions_static(metadata["table"]["columns"])
+    refresh_scheduled = _schedule_llm_suggestion_refresh(cache_key, metadata)
+    suggestion_source = "static_pending_ai" if refresh_scheduled else "static"
+    return static_suggestions, dtype_map, suggestion_source
 
 
 def q_ident(name: str) -> str:
@@ -517,15 +584,16 @@ def parse_selections_from_payload(payload: Dict[str, Any]) -> List[Tuple[str, st
 
 def build_suggestion_response(catalog: str, schema: str, table: str) -> dict[str, Any]:
     metadata = get_table_metadata(catalog, schema, table)
-    suggestions, dtypes = build_suggestions(metadata)
+    suggestions, dtypes, suggestion_source = build_suggestions(metadata)
 
     return {
         "target": full_table_target_str(metadata),
-        "note": "LLM-suggested columns per rule (grounded in column descriptions).",
+        "note": "Cached AI suggestions are returned when available; otherwise a static fallback is returned immediately while AI refresh runs in the background.",
         "rules_order": RULE_ORDER,
         "rule_titles": RULE_TITLES,
         "suggested_columns_by_rule": suggestions,
         "dtypes_by_column": dtypes,
+        "suggestion_source": suggestion_source,
         "metadata_source": str(DOCUMENTATION_PATH),
     }
 

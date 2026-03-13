@@ -7,7 +7,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import column_lineage, dq, health, lineage_retriever, stats, table_lineage
 from app.api import refresh
-from app.services.table_service import USE_REDIS_CACHE, load_cache_into_memory, preload_graph
+from app.services.refresh_service import trigger_startup_cache_warmup
+from app.services.table_service import USE_REDIS_CACHE
 
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend_static"
 ASSETS_DIR = FRONTEND_DIR / "assets"
@@ -72,9 +73,7 @@ def serve_frontend(full_path: str) -> FileResponse:
 @app.on_event("startup")
 def startup():
     if USE_REDIS_CACHE:
-        print("Initializing Redis lineage cache...")
-        preload_graph()
-        load_cache_into_memory()
+        trigger_startup_cache_warmup()
     else:
         print("Redis cache warmup skipped. Using direct Neo4j traversal.")
 
