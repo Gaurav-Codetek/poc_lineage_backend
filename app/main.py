@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import column_lineage, health, lineage_retriever, stats, table_lineage
+from app.api import column_lineage, dq, health, lineage_retriever, stats, table_lineage
 from app.api import refresh
 from app.services.table_service import USE_REDIS_CACHE, load_cache_into_memory, preload_graph
 
@@ -21,6 +21,7 @@ app.include_router(refresh.router, prefix="/refresh")
 app.include_router(lineage_retriever.router, prefix="/retriever")
 app.include_router(stats.router, prefix="/stats")
 app.include_router(health.router, prefix="/health")
+app.include_router(dq.router, prefix="/dq")
 
 @app.on_event("startup")
 def startup():

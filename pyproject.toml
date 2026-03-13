@@ -17,4 +17,5 @@ dependencies = [
     "rapidfuzz>=3.14.3",
     "pandas>=2.2.3",
     "numpy>=2.2.1",
+    "openai",
 ]
