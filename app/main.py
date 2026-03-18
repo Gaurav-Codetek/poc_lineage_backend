@@ -21,6 +21,7 @@ API_ROUTERS = [
     (stats.router, "/stats"),
     (health.router, "/health"),
     (dq.router, "/dq"),
+    (dq.router, "/dq-checker"),
 ]
 
 app = FastAPI(

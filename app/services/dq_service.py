@@ -15,8 +15,20 @@ try:
 except Exception:
     AzureOpenAI = None
 
+try:
+    import yaml
+except Exception:
+    yaml = None
 
-DOCUMENTATION_PATH = Path(__file__).resolve().parents[1] / "data" / "documentation.json"
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+APP_ROOT = Path(__file__).resolve().parents[1]
+DOCUMENTATION_PATH = APP_ROOT / "data" / "documentation.json"
+METADATA_SEARCH_ROOTS = (
+    PROJECT_ROOT,
+    APP_ROOT,
+    APP_ROOT / "data",
+)
 
 RULE_ORDER = [
     "not_null",
@@ -175,33 +187,113 @@ def _iter_metadata_candidates(
             )
 
 
-@lru_cache(maxsize=1)
-def _load_documentation() -> Any:
-    if not DOCUMENTATION_PATH.exists():
-        raise FileNotFoundError(f"Documentation file not found: {DOCUMENTATION_PATH}")
+def _normalize_table_fqn(table_fqn: str) -> str:
+    cleaned = ".".join(part.strip().strip("`") for part in table_fqn.replace("`", "").split(".", 2))
+    parts = cleaned.split(".", 2)
+    if len(parts) != 3 or not all(parts):
+        raise ValueError("table_fqn must be in catalog.schema.table format.")
+    return ".".join(parts)
 
-    with DOCUMENTATION_PATH.open("r", encoding="utf-8") as handle:
+
+def _resolve_metadata_path(path_value: str | None) -> Path:
+    if not path_value:
+        return DOCUMENTATION_PATH.resolve()
+
+    candidate = Path(path_value).expanduser()
+    search_candidates = []
+
+    if candidate.is_absolute():
+        search_candidates.append(candidate)
+    else:
+        search_candidates.append((Path.cwd() / candidate))
+        search_candidates.extend(root / candidate for root in METADATA_SEARCH_ROOTS)
+
+    for candidate_path in search_candidates:
+        if candidate_path.exists():
+            return candidate_path.resolve()
+
+    return search_candidates[0].resolve()
+
+
+@lru_cache(maxsize=8)
+def _load_metadata_document(path_str: str) -> Any:
+    source_path = Path(path_str)
+    if not source_path.exists():
+        raise FileNotFoundError(f"Metadata file not found: {source_path}")
+
+    with source_path.open("r", encoding="utf-8") as handle:
+        if source_path.suffix.lower() in {".yaml", ".yml"}:
+            if yaml is None:
+                raise RuntimeError("PyYAML is required to load YAML metadata files.")
+            return yaml.safe_load(handle)
         return json.load(handle)
 
 
+def _load_documentation() -> Any:
+    return _load_metadata_document(str(DOCUMENTATION_PATH.resolve()))
+
+
 def clear_documentation_cache() -> None:
-    _load_documentation.cache_clear()
+    _load_metadata_document.cache_clear()
 
 
-def get_table_metadata(catalog: str, schema: str, table: str) -> dict[str, Any]:
-    documentation = _load_documentation()
-    target = f"{catalog}.{schema}.{table}".lower()
+def _resolve_metadata_source(
+    catalog_json_path: str | None = None,
+    metadata_path: str | None = None,
+) -> tuple[Any, Path]:
+    source_path = _resolve_metadata_path(metadata_path or catalog_json_path)
+    return _load_metadata_document(str(source_path)), source_path
 
-    for candidate in _iter_metadata_candidates(documentation):
-        candidate_name = (candidate.get("full_table_name") or "").lower()
-        if candidate_name == target:
-            return {
-                "catalog": candidate["catalog"],
-                "schema": candidate["schema"],
-                "table": candidate["table"],
-            }
 
-    raise KeyError(f"Metadata not found for {catalog}.{schema}.{table} in {DOCUMENTATION_PATH}")
+def resolve_table_metadata(
+    catalog: str | None = None,
+    schema: str | None = None,
+    table: str | None = None,
+    *,
+    table_fqn: str | None = None,
+    catalog_json_path: str | None = None,
+    metadata_path: str | None = None,
+) -> tuple[dict[str, Any], Path]:
+    documentation, source_path = _resolve_metadata_source(catalog_json_path, metadata_path)
+    target = table_fqn or _full_name_from_parts(catalog, schema, table)
+
+    if target:
+        normalized_target = _normalize_table_fqn(target).lower()
+        for candidate in _iter_metadata_candidates(documentation):
+            candidate_name = (candidate.get("full_table_name") or "").lower()
+            if candidate_name == normalized_target:
+                return candidate, source_path
+
+        raise KeyError(f"Metadata not found for {normalized_target} in {source_path}")
+
+    candidates = list(_iter_metadata_candidates(documentation))
+    if not candidates:
+        raise KeyError(f"No table metadata records found in {source_path}")
+    if len(candidates) > 1:
+        raise ValueError("table_fqn is required when the metadata source contains multiple tables.")
+    return candidates[0], source_path
+
+
+def get_table_metadata(
+    catalog: str,
+    schema: str,
+    table: str,
+    *,
+    catalog_json_path: str | None = None,
+    metadata_path: str | None = None,
+) -> dict[str, Any]:
+    metadata, _ = resolve_table_metadata(
+        catalog,
+        schema,
+        table,
+        catalog_json_path=catalog_json_path,
+        metadata_path=metadata_path,
+    )
+    return {
+        "catalog": metadata["catalog"],
+        "schema": metadata["schema"],
+        "table": metadata["table"],
+    }
 
 
 def _static_suggest(dtype: str) -> List[str]:
@@ -684,8 +776,23 @@ def parse_selections_from_payload(payload: Dict[str, Any]) -> List[Tuple[str, st
     return unique
 
 
-def build_suggestion_response(catalog: str, schema: str, table: str) -> dict[str, Any]:
-    metadata = get_table_metadata(catalog, schema, table)
+def build_suggestion_response(
+    catalog: str | None = None,
+    schema: str | None = None,
+    table: str | None = None,
+    *,
+    table_fqn: str | None = None,
+    catalog_json_path: str | None = None,
+    metadata_path: str | None = None,
+) -> dict[str, Any]:
+    metadata, source_path = resolve_table_metadata(
+        catalog,
+        schema,
+        table,
+        table_fqn=table_fqn,
+        catalog_json_path=catalog_json_path,
+        metadata_path=metadata_path,
+    )
     suggestions, dtypes, suggestion_source = build_suggestions(metadata)
 
     return {
@@ -696,12 +803,28 @@ def build_suggestion_response(catalog: str, schema: str, table: str) -> dict[str
         "suggested_columns_by_rule": suggestions,
         "dtypes_by_column": dtypes,
         "suggestion_source": suggestion_source,
-        "metadata_source": str(DOCUMENTATION_PATH),
+        "metadata_source": str(source_path),
     }
 
 
-def build_run_response(catalog: str, schema: str, table: str, payload: Dict[str, Any]) -> dict[str, Any]:
-    metadata = get_table_metadata(catalog, schema, table)
+def build_run_response(
+    catalog: str | None,
+    schema: str | None,
+    table: str | None,
+    payload: Dict[str, Any],
+    *,
+    table_fqn: str | None = None,
+    catalog_json_path: str | None = None,
+    metadata_path: str | None = None,
+) -> dict[str, Any]:
+    metadata, source_path = resolve_table_metadata(
+        catalog,
+        schema,
+        table,
+        table_fqn=table_fqn,
+        catalog_json_path=catalog_json_path,
+        metadata_path=metadata_path,
+    )
     selections = parse_selections_from_payload(payload)
 
     if not selections:
@@ -717,7 +840,7 @@ def build_run_response(catalog: str, schema: str, table: str, payload: Dict[str,
                 "all_passed": True,
             },
             "message": "No checks were selected.",
-            "metadata_source": str(DOCUMENTATION_PATH),
+            "metadata_source": str(source_path),
         }
 
     columns = metadata["table"]["columns"]
@@ -769,7 +892,7 @@ def build_run_response(catalog: str, schema: str, table: str, payload: Dict[str,
             "total_columns_with_failures": len(failures_by_col),
             "all_passed": all_passed,
         },
-        "metadata_source": str(DOCUMENTATION_PATH),
+        "metadata_source": str(source_path),
     }
 
     if all_passed:
