@@ -39,4 +39,4 @@ DATABRICKS_CONFIG = {
 }
 
 CATALOG = "intelliegencedatacatalog"
-databricks_schema="functionalities"
+databricks_schema="new_functionalities"

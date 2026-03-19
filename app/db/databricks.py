@@ -22,6 +22,7 @@ def fetch_one(query: str) -> dict[str, Any] | None:
             with conn.cursor() as cursor:
                 cursor.execute(query)
                 row = cursor.fetchone()
+                print(row)
                 return None if row is None else row.asDict()
     except Exception as exc:
         raise DatabricksQueryError("Databricks query failed") from exc
@@ -32,6 +33,7 @@ def fetch_all(query: str) -> list[dict[str, Any]]:
             with conn.cursor() as cursor:
                 cursor.execute(query)
                 rows = cursor.fetchall()
+                print(rows)
                 return [row.asDict() for row in rows]
     except Exception as exc:
         raise DatabricksQueryError("Databricks query failed") from exc
