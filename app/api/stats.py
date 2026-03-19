@@ -26,19 +26,26 @@ class FreshnessResponse(BaseModel):
     latency_hours: float | None = None
     current_version: int | None = None
     last_documented_at: str | None = None
+    partition_count: int | None = None
 
 
 class QualityColumn(BaseModel):
     column_name: str
     data_type: str | None = None
+    null_count: int | None = None
     null_percentage: float | None = None
     distinct_count: int | None = None
+    zero_count: int | None = None
     total_rows: int | None = None
+    fingerprint: str | None = None
 
 
 class ProfileColumn(BaseModel):
     column_name: str
     data_type: str | None = None
+    row_count: int | None = None
+    file_size_bytes: int | None = None
+    distinct_count: int | None = None
     mean: float | None = None
     min_val: float | None = None
     p25: float | None = None
