@@ -229,6 +229,48 @@ class DAGBuilder:
         return [row["table"] for row in results]
 
 
+    def get_catalog_hierarchy(self):
+        hierarchy_map = {}
+
+        for full_name in self.get_tables():
+            parts = full_name.split(".", 2)
+            if len(parts) != 3 or not all(parts):
+                continue
+
+            catalog_name, schema_name, table_name = parts
+            schema_tables = hierarchy_map.setdefault(catalog_name, {}).setdefault(schema_name, [])
+            schema_tables.append(
+                {
+                    "name": table_name,
+                    "full_name": full_name,
+                }
+            )
+
+        catalogs = []
+        for catalog_name in sorted(hierarchy_map):
+            schemas = []
+            for schema_name in sorted(hierarchy_map[catalog_name]):
+                tables = sorted(
+                    hierarchy_map[catalog_name][schema_name],
+                    key=lambda table: (table["name"], table["full_name"]),
+                )
+                schemas.append(
+                    {
+                        "name": schema_name,
+                        "tables": tables,
+                    }
+                )
+
+            catalogs.append(
+                {
+                    "name": catalog_name,
+                    "schemas": schemas,
+                }
+            )
+
+        return {"catalogs": catalogs}
+
+
     # ---------------------------------------------------
     # TABLE SEARCH
     # ---------------------------------------------------

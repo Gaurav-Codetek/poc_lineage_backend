@@ -35,6 +35,11 @@ def get_tables():
     return dag_builder.get_tables()
 
 
+@router.get("/tables/catalog")
+def get_catalog():
+    return dag_builder.get_catalog_hierarchy()
+
+
 @router.get("/tables/search/{query}")
 def search_tables(query: str):
     return dag_builder.search_tables(query, limit=20)

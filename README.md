@@ -33,13 +33,16 @@ scripts/                  # Offline/batch entrypoint scripts
 - `POST /refresh/ingestion`
 - `GET /retriever/lineage/{catalog}.{schema}.{table}`
 - `GET /retriever/tables`
+- `GET /retriever/tables/catalog`
 - `GET /retriever/tables/search/{query}`
+- `GET /catalog-metadata/hierarchy`
 - `GET /retriever/dimensions/{table_name}`
 - `GET /retriever/dimensions/detail/{table_name}`
 
 ## Batch Scripts
 
 - `scripts/run_ingestion.py`
+- `scripts/run_catalog_metadata_ingestion.py`
 - `scripts/run_pk_detection.py`
 - `scripts/run_fk_detection.py`
 - `scripts/run_fk_scoring.py`
