@@ -31,6 +31,7 @@ scripts/                  # Offline/batch entrypoint scripts
 - `GET /lineage/column/{table}/{column}`
 - `POST /refresh/cache`
 - `POST /refresh/ingestion`
+- `POST /refresh/catalog-metadata`
 - `GET /retriever/lineage/{catalog}.{schema}.{table}`
 - `GET /retriever/tables`
 - `GET /retriever/tables/catalog`
