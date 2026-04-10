@@ -34,8 +34,8 @@ def start_scheduler():
         background_refresh_catalog_snapshot,
         id="catalog_hierarchy_refresh",
         trigger="cron",
-        hour=7,
-        minute=36,
+        hour=13,
+        minute=8,
         replace_existing=True,
     )
     scheduler.start()
