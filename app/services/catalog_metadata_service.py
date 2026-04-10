@@ -1,4 +1,6 @@
 import json
+import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,6 +12,7 @@ from app.extractors.catalog_metadata_extractor import CatalogMetadataExtractor
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 CATALOG_HIERARCHY_PATH = APP_ROOT / "data" / "catalog_hierarchy.json"
+CATALOG_REFRESH_LOCK = threading.Lock()
 
 
 def _clean_scalar(value):
@@ -135,7 +138,20 @@ def build_catalog_snapshot(tables_df: pd.DataFrame, columns_df: pd.DataFrame) ->
 
 def write_catalog_snapshot(snapshot: dict, path: Path = CATALOG_HIERARCHY_PATH) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+    payload = json.dumps(snapshot, indent=2)
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f"{path.stem}_",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(payload)
+        temp_path = Path(handle.name)
+
+    temp_path.replace(path)
     return path
 
 
@@ -154,3 +170,22 @@ def refresh_catalog_snapshot() -> dict:
     snapshot = build_catalog_snapshot(tables_df, columns_df)
     write_catalog_snapshot(snapshot)
     return snapshot
+
+
+def background_refresh_catalog_snapshot() -> dict | None:
+    if CATALOG_REFRESH_LOCK.locked():
+        print("Catalog hierarchy refresh already running...")
+        return None
+
+    with CATALOG_REFRESH_LOCK:
+        print("Starting catalog hierarchy snapshot refresh...")
+        snapshot = refresh_catalog_snapshot()
+        stats = snapshot.get("stats", {})
+        print(
+            "Catalog hierarchy snapshot refresh completed. "
+            f"catalogs={stats.get('catalog_count', 0)}, "
+            f"schemas={stats.get('schema_count', 0)}, "
+            f"tables={stats.get('table_count', 0)}, "
+            f"columns={stats.get('column_count', 0)}."
+        )
+        return snapshot

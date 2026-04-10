@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import catalog_metadata, column_lineage, dq, health, lineage_retriever, stats, table_lineage
 from app.api import refresh
+from app.jobs.scheduler import start_scheduler
 from app.services.refresh_service import trigger_startup_cache_warmup
 from app.services.table_service import USE_REDIS_CACHE
 
@@ -74,6 +75,8 @@ def serve_frontend(full_path: str) -> FileResponse:
 
 @app.on_event("startup")
 def startup():
+    start_scheduler()
+
     if USE_REDIS_CACHE:
         trigger_startup_cache_warmup()
     else:

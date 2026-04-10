@@ -48,3 +48,10 @@ scripts/                  # Offline/batch entrypoint scripts
 - `scripts/run_fk_scoring.py`
 - `scripts/run_table_classification.py`
 - `scripts/scheduler.py`
+
+## Scheduled Jobs
+
+- The backend starts the APScheduler worker on app startup.
+- `scripts/scheduler.py` can still run the scheduler as a standalone worker if you need that mode.
+- Databricks to Neo4j ingestion runs at `12:00 AM IST`.
+- `catalog_hierarchy.json` refresh runs at `7:32 AM IST`.
