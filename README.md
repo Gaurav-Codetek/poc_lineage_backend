@@ -37,6 +37,9 @@ scripts/                  # Offline/batch entrypoint scripts
 - `GET /retriever/tables/catalog`
 - `GET /retriever/tables/search/{query}`
 - `GET /catalog-metadata/hierarchy`
+- `GET /information-schema/catalog/{catalog}`
+- `GET /information-schema/schema/{catalog}.{schema}`
+- `GET /information-schema/table/{catalog}.{schema}.{table}`
 - `GET /retriever/dimensions/{table_name}`
 - `GET /retriever/dimensions/detail/{table_name}`
 

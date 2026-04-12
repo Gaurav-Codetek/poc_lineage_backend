@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import catalog_metadata, column_lineage, dq, health, lineage_retriever, stats, table_lineage
+from app.api import catalog_metadata, column_lineage, dq, health, information_schema, lineage_retriever, stats, table_lineage
 from app.api import refresh
 from app.jobs.scheduler import start_scheduler
 from app.services.refresh_service import trigger_startup_cache_warmup
@@ -20,6 +20,7 @@ API_ROUTERS = [
     (refresh.router, "/refresh"),
     (lineage_retriever.router, "/retriever"),
     (catalog_metadata.router, "/catalog-metadata"),
+    (information_schema.router, "/information-schema"),
     (stats.router, "/stats"),
     (health.router, "/health"),
     (dq.router, "/dq"),
